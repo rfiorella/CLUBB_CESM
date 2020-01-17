@@ -816,33 +816,37 @@ module pdf_utilities
     real ( kind = core_rknd ), dimension(gr%nz), intent(out) :: &
       corr_x_y_1, & ! Correlation of x and y (1st PDF component)    [-]
       corr_x_y_2    ! Correlation of x and y (2nd PDF component)    [-]
+   
+    integer :: i
 
+     do i=1, gr%nz
 
-    where ( sigma_x_1_sqd * sigma_y_1_sqd > zero &
-            .or. sigma_x_2_sqd * sigma_y_2_sqd > zero )
+       if ( sigma_x_1_sqd(i) * sigma_y_1_sqd(i) > zero &
+             .or. sigma_x_2_sqd(i) * sigma_y_2_sqd(i) > zero ) then
 
-       ! Calculate corr_x_y_1 (which also equals corr_x_y_2).
-       corr_x_y_1 &
-       = ( xpyp &
-           - mixt_frac * ( mu_x_1 - xm ) * ( mu_y_1 - ym ) &
-           - ( one - mixt_frac ) * ( mu_x_2 - xm ) * ( mu_y_2 - ym ) ) &
-         / ( mixt_frac * sqrt( sigma_x_1_sqd * sigma_y_1_sqd ) &
-             + ( one - mixt_frac ) * sqrt( sigma_x_2_sqd * sigma_y_2_sqd ) )
+         ! Calculate corr_x_y_1 (which also equals corr_x_y_2).
+         corr_x_y_1(i) &
+         = ( xpyp(i) &
+             - mixt_frac(i) * ( mu_x_1(i) - xm(i) ) * ( mu_y_1(i) - ym(i) ) &
+             - ( one - mixt_frac(i) ) * ( mu_x_2(i) - xm(i) ) * ( mu_y_2(i) - ym(i) ) ) &
+           / ( mixt_frac(i) * sqrt( sigma_x_1_sqd(i) * sigma_y_1_sqd(i) ) &
+               + ( one - mixt_frac(i) ) * sqrt( sigma_x_2_sqd(i) * sigma_y_2_sqd(i) ) )
 
-       ! The correlation must fall within the bounds of
-       ! -1 <= corr_x_y_1 (= corr_x_y_2) <= 1.
-       where ( corr_x_y_1 > one )
-          corr_x_y_1 = one
-       elsewhere ( corr_x_y_1 < -one )
-          corr_x_y_1 = -one
-       endwhere
+         ! The correlation must fall within the bounds of
+         ! -1 <= corr_x_y_1 (= corr_x_y_2) <= 1.
+         if ( corr_x_y_1(i) > one ) then
+            corr_x_y_1(i) = one
+         elseif ( corr_x_y_1(i) < -one ) then
+            corr_x_y_1(i) = -one
+         endif
 
-    elsewhere ! sigma_x_1^2 * sigma_y_1^2 = 0 and sigma_x_2^2 * sigma_y_2^2 = 0.
+       else             ! sigma_x_1^2 * sigma_y_1^2 = 0 and sigma_x_2^2 * sigma_y_2^2 = 0.
 
-       ! The correlation is undefined (output as 0).
-       corr_x_y_1 = zero
+         ! The correlation is undefined (output as 0).
+         corr_x_y_1(i) = zero
+       end if
 
-    endwhere
+    end do
 
     ! Set corr_x_y_2 equal to corr_x_y_1.
     corr_x_y_2 = corr_x_y_1
