@@ -76,7 +76,7 @@ module error_code
         write(err_header,'(A7,I7,A20)') "Thread ", omp_get_thread_num(), " -- CLUBB -- ERROR: "
 #else
         integer :: getpid
-        write(err_header,'(A7,I7,A20)') "Process ", getpid(), " -- CLUBB -- ERROR: "
+        write(err_header,'(A20)') " -- CLUBB -- ERROR: "
 #endif               
         
 
