@@ -29,7 +29,7 @@ module pdf_utilities
   contains
 
   !=============================================================================
-  pure function mean_L2N( mu_x, sigma2_on_mu2 )  &
+  elemental function mean_L2N( mu_x, sigma2_on_mu2 )  &
   result( mu_x_n )
   
     ! Description:
@@ -63,7 +63,11 @@ module pdf_utilities
 
 
     ! Find the mean of ln x for the ith component of the PDF.
-    mu_x_n = log( mu_x / sqrt( one + sigma2_on_mu2 ) )
+    ! The max( mu_x / sqrt( 1 + sigma_x^2 / mu_x^2 ), tiny( mu_x ) ) statement
+    ! is used to prevent taking ln 0, which will produce a result of -infinity.
+    ! This would happen when mu_x is 0.  However, this code should not be
+    ! entered when mu_x has a value of 0.
+    mu_x_n = log( max( mu_x / sqrt( one + sigma2_on_mu2 ), tiny( mu_x ) ) )
 
 
     return
@@ -71,7 +75,7 @@ module pdf_utilities
   end function mean_L2N
 
   !=============================================================================
-  pure function mean_L2N_dp( mu_x, sigma2_on_mu2 )  &
+  elemental function mean_L2N_dp( mu_x, sigma2_on_mu2 )  &
   result( mu_x_n )
   
     ! Description:
@@ -114,7 +118,7 @@ module pdf_utilities
   end function mean_L2N_dp
 
   !=============================================================================
-  pure function stdev_L2N( sigma2_on_mu2 )  &
+  elemental function stdev_L2N( sigma2_on_mu2 )  &
   result( sigma_x_n )
 
     ! Description:
@@ -156,7 +160,7 @@ module pdf_utilities
   end function stdev_L2N
 
   !=============================================================================
-  pure function stdev_L2N_dp( sigma2_on_mu2 )  &
+  elemental function stdev_L2N_dp( sigma2_on_mu2 )  &
   result( sigma_x_n )
 
     ! Description:
@@ -199,7 +203,7 @@ module pdf_utilities
   end function stdev_L2N_dp
 
   !=============================================================================
-  pure function corr_NL2NN( corr_x_y, sigma_y_n, y_sigma2_on_mu2 )  &
+  elemental function corr_NL2NN( corr_x_y, sigma_y_n, y_sigma2_on_mu2 )  &
   result( corr_x_y_n )
 
     ! Description:
@@ -269,7 +273,7 @@ module pdf_utilities
   end function corr_NL2NN
 
   !=============================================================================
-  pure function corr_NL2NN_dp( corr_x_y, sigma_y_n, y_sigma2_on_mu2 )  &
+  elemental function corr_NL2NN_dp( corr_x_y, sigma_y_n, y_sigma2_on_mu2 )  &
   result( corr_x_y_n )
 
     ! Description:
@@ -340,7 +344,7 @@ module pdf_utilities
   end function corr_NL2NN_dp
 
   !=============================================================================
-  pure function corr_NN2NL( corr_x_y_n, sigma_y_n, y_sigma2_on_mu2 )  &
+  elemental function corr_NN2NL( corr_x_y_n, sigma_y_n, y_sigma2_on_mu2 )  &
   result( corr_x_y )
 
     ! Description:
@@ -382,7 +386,13 @@ module pdf_utilities
     ! sigma_y_n = 0.  The resulting corr_x_y and corr_x_y_n are undefined.
     ! However, the divide-by-zero problem needs to be addressed in the code.
     if ( sigma_y_n > zero ) then
-       corr_x_y = corr_x_y_n * sigma_y_n / sqrt( y_sigma2_on_mu2 )
+       ! Use the maximum of y_sigma2_on_mu2 and tiny( y_sigma2_on_mu2 ) instead
+       ! of just y_sigma2_on_mu2.  The value of y_sigma2_on_mu2 must already be
+       ! greater than 0 in order for this block of code to be entered (when
+       ! y_sigma2_on_mu2 = 0, sigma_y_n = 0, and this block of code is not
+       ! entered).
+       corr_x_y = corr_x_y_n * sigma_y_n &
+                  / sqrt( max( y_sigma2_on_mu2, tiny( y_sigma2_on_mu2 ) ) )
     else ! sigma_y_n = 0
        ! The value of sigma_y_n / sqrt( y_sigma2_on_mu2 ) can be rewritten as:
        ! sqrt( ln( 1 + y_sigma2_on_mu2 ) ) / sqrt( y_sigma2_on_mu2 ).
@@ -410,8 +420,8 @@ module pdf_utilities
   end function corr_NN2NL
 
   !=============================================================================
-  pure function corr_LL2NN( corr_x_y, sigma_x_n, sigma_y_n, &
-                            x_sigma2_on_mu2, y_sigma2_on_mu2 )  &
+  elemental function corr_LL2NN( corr_x_y, sigma_x_n, sigma_y_n, &
+                                 x_sigma2_on_mu2, y_sigma2_on_mu2 )  &
   result( corr_x_y_n )
 
     ! Description:
@@ -488,8 +498,8 @@ module pdf_utilities
   end function corr_LL2NN
 
   !=============================================================================
-  pure function corr_LL2NN_dp( corr_x_y, sigma_x_n, sigma_y_n, &
-                               x_sigma2_on_mu2, y_sigma2_on_mu2 )  &
+  elemental function corr_LL2NN_dp( corr_x_y, sigma_x_n, sigma_y_n, &
+                                    x_sigma2_on_mu2, y_sigma2_on_mu2 )  &
   result( corr_x_y_n )
 
     ! Description:
@@ -562,8 +572,8 @@ module pdf_utilities
   end function corr_LL2NN_dp
 
   !=============================================================================
-  pure function corr_NN2LL( corr_x_y_n, sigma_x_n, sigma_y_n, &
-                            x_sigma2_on_mu2, y_sigma2_on_mu2 )  &
+  elemental function corr_NN2LL( corr_x_y_n, sigma_x_n, sigma_y_n, &
+                                 x_sigma2_on_mu2, y_sigma2_on_mu2 )  &
   result( corr_x_y )
 
     ! Description:
@@ -722,11 +732,16 @@ module pdf_utilities
   end function compute_variance_binormal
 
   !=============================================================================
-  subroutine calc_comp_corrs_binormal( xpyp, xm, ym, mu_x_1, mu_x_2,  & ! In
-                                       mu_y_1, mu_y_2, sigma_x_1_sqd, & ! In
-                                       sigma_x_2_sqd, sigma_y_1_sqd,  & ! In
-                                       sigma_y_2_sqd, mixt_frac,      & ! In
-                                       corr_x_y_1, corr_x_y_2         ) ! Out
+  elemental subroutine calc_comp_corrs_binormal( xpyp, xm, ym,   & ! In
+                                                 mu_x_1, mu_x_2, & ! In
+                                                 mu_y_1, mu_y_2, & ! In
+                                                 sigma_x_1_sqd,  & ! In
+                                                 sigma_x_2_sqd,  & ! In
+                                                 sigma_y_1_sqd,  & ! In
+                                                 sigma_y_2_sqd,  & ! In
+                                                 mixt_frac,      & ! In
+                                                 corr_x_y_1,     & ! Out
+                                                 corr_x_y_2      ) ! Out
 
     ! Description:
     ! Calculates the PDF component correlations of variables x and y, where
@@ -785,11 +800,9 @@ module pdf_utilities
     ! References:
     !-----------------------------------------------------------------------
 
-    use grid_class, only: &
-        gr    ! Variable type(s)
-
     use constants_clubb, only: &
-        one,  & ! Variable(s)
+        max_mag_correlation, & ! Variable(s)
+        one, &
         zero
 
     use clubb_precision, only: &
@@ -798,7 +811,7 @@ module pdf_utilities
     implicit none
 
     ! Input Variables
-    real ( kind = core_rknd ), dimension(gr%nz), intent(in) :: &
+    real ( kind = core_rknd ), intent(in) :: &
       xpyp,          & ! Covariance of x and y (overall)    [(x units)(y units)]
       xm,            & ! Mean of x (overall)                [x units]
       ym,            & ! Mean of y (overall)                [y units]
@@ -813,40 +826,33 @@ module pdf_utilities
       mixt_frac        ! Mixture fraction                   [-]
 
     ! Output Variables
-    real ( kind = core_rknd ), dimension(gr%nz), intent(out) :: &
+    real ( kind = core_rknd ), intent(out) :: &
       corr_x_y_1, & ! Correlation of x and y (1st PDF component)    [-]
       corr_x_y_2    ! Correlation of x and y (2nd PDF component)    [-]
-   
-    integer :: i
 
-     do i=1, gr%nz
 
-       if ( sigma_x_1_sqd(i) * sigma_y_1_sqd(i) > zero &
-             .or. sigma_x_2_sqd(i) * sigma_y_2_sqd(i) > zero ) then
+    if ( sigma_x_1_sqd * sigma_y_1_sqd > zero &
+         .or. sigma_x_2_sqd * sigma_y_2_sqd > zero ) then
 
-         ! Calculate corr_x_y_1 (which also equals corr_x_y_2).
-         corr_x_y_1(i) &
-         = ( xpyp(i) &
-             - mixt_frac(i) * ( mu_x_1(i) - xm(i) ) * ( mu_y_1(i) - ym(i) ) &
-             - ( one - mixt_frac(i) ) * ( mu_x_2(i) - xm(i) ) * ( mu_y_2(i) - ym(i) ) ) &
-           / ( mixt_frac(i) * sqrt( sigma_x_1_sqd(i) * sigma_y_1_sqd(i) ) &
-               + ( one - mixt_frac(i) ) * sqrt( sigma_x_2_sqd(i) * sigma_y_2_sqd(i) ) )
+       ! Calculate corr_x_y_1 (which also equals corr_x_y_2).
+       corr_x_y_1 &
+       = ( xpyp &
+           - mixt_frac * ( mu_x_1 - xm ) * ( mu_y_1 - ym ) &
+           - ( one - mixt_frac ) * ( mu_x_2 - xm ) * ( mu_y_2 - ym ) ) &
+         / ( mixt_frac * sqrt( sigma_x_1_sqd * sigma_y_1_sqd ) &
+             + ( one - mixt_frac ) * sqrt( sigma_x_2_sqd * sigma_y_2_sqd ) )
 
-         ! The correlation must fall within the bounds of
-         ! -1 <= corr_x_y_1 (= corr_x_y_2) <= 1.
-         if ( corr_x_y_1(i) > one ) then
-            corr_x_y_1(i) = one
-         elseif ( corr_x_y_1(i) < -one ) then
-            corr_x_y_1(i) = -one
-         endif
+       ! The correlation must fall within the bounds of
+       ! -max_mag_correlation < corr_x_y_1 (= corr_x_y_2) < max_mag_correlation
+       corr_x_y_1 = max( -max_mag_correlation, &
+                         min( max_mag_correlation, corr_x_y_1 ) )
 
-       else             ! sigma_x_1^2 * sigma_y_1^2 = 0 and sigma_x_2^2 * sigma_y_2^2 = 0.
+    else ! sigma_x_1^2 * sigma_y_1^2 = 0 and sigma_x_2^2 * sigma_y_2^2 = 0.
 
-         ! The correlation is undefined (output as 0).
-         corr_x_y_1(i) = zero
-       end if
+       ! The correlation is undefined (output as 0).
+       corr_x_y_1 = zero
 
-    end do
+    endif
 
     ! Set corr_x_y_2 equal to corr_x_y_1.
     corr_x_y_2 = corr_x_y_1
@@ -857,8 +863,10 @@ module pdf_utilities
   end subroutine calc_comp_corrs_binormal
 
   !=============================================================================
-  pure function calc_corr_chi_x( crt_i, cthl_i, sigma_rt_i, sigma_thl_i,  &
-                                 sigma_chi_i, corr_rt_x_i, corr_thl_x_i )  &
+  elemental function calc_corr_chi_x( crt_i, cthl_i,             &
+                                      sigma_rt_i, sigma_thl_i,   &
+                                      sigma_chi_i,               &
+                                      corr_rt_x_i, corr_thl_x_i )  &
   result( corr_chi_x_i )
 
     ! Description:
@@ -913,9 +921,6 @@ module pdf_utilities
     ! http://dc.uwm.edu/cgi/viewcontent.cgi?article=2149&context=etd.
     !-----------------------------------------------------------------------
 
-    use grid_class, only: &
-        gr    ! Variable type(s)
-
     use constants_clubb, only: &
         zero,                & ! Constant(s)
         chi_tol,             &
@@ -927,7 +932,7 @@ module pdf_utilities
     implicit none
 
     ! Input Variables
-    real( kind = core_rknd ), dimension(gr%nz), intent(in) :: &
+    real( kind = core_rknd ), intent(in) :: &
       crt_i,        & ! Coefficient of r_t for chi (old s) (ith PDF comp.)   [-]
       cthl_i,       & ! Coefficient of th_l for chi (ith PDF comp.)  [(kg/kg)/K]
       sigma_rt_i,   & ! Standard deviation of r_t (ith PDF component)    [kg/kg]
@@ -937,17 +942,17 @@ module pdf_utilities
       corr_thl_x_i    ! Correlation of th_l and x (ith PDF component)        [-]
 
     ! Return Variable
-    real( kind = core_rknd ), dimension(gr%nz) :: &
+    real( kind = core_rknd ) :: &
       corr_chi_x_i  ! Correlation of chi and x (ith PDF component)   [-]
 
 
     ! Calculate the correlation of chi and x in the ith PDF component.
-    where ( sigma_chi_i > chi_tol )
+    if ( sigma_chi_i > chi_tol ) then
 
        corr_chi_x_i = crt_i * ( sigma_rt_i / sigma_chi_i ) * corr_rt_x_i  &
                       - cthl_i * ( sigma_thl_i / sigma_chi_i ) * corr_thl_x_i
 
-    elsewhere  ! sigma_chi_i = 0
+    else  ! sigma_chi_i = 0
 
        ! The standard deviation of chi in the ith PDF component is 0.  This
        ! means that chi is constant within the ith PDF component, and the ith
@@ -956,17 +961,17 @@ module pdf_utilities
        ! be used.
        corr_chi_x_i = zero
 
-    endwhere
+    endif
 
     ! Clip the magnitude of the correlation of chi and x in the ith PDF
     ! component, just in case the correlations and standard deviations used in
     ! calculating it are inconsistent, resulting in an unrealizable value for
     ! corr_chi_x_i.
-    where ( corr_chi_x_i > max_mag_correlation )
+    if ( corr_chi_x_i > max_mag_correlation ) then
        corr_chi_x_i = max_mag_correlation
-    elsewhere ( corr_chi_x_i < -max_mag_correlation )
+    elseif ( corr_chi_x_i < -max_mag_correlation ) then
        corr_chi_x_i = -max_mag_correlation
-    endwhere
+    endif
 
 
     return
@@ -974,8 +979,10 @@ module pdf_utilities
   end function calc_corr_chi_x
 
   !=============================================================================
-  pure function calc_corr_eta_x( crt_i, cthl_i, sigma_rt_i, sigma_thl_i,  &
-                                 sigma_eta_i, corr_rt_x_i, corr_thl_x_i )  &
+  elemental function calc_corr_eta_x( crt_i, cthl_i,             &
+                                      sigma_rt_i, sigma_thl_i,   &
+                                      sigma_eta_i, corr_rt_x_i,  &
+                                      corr_thl_x_i )  &
   result( corr_eta_x_i )
 
     ! Description:
@@ -992,9 +999,6 @@ module pdf_utilities
     ! http://dc.uwm.edu/cgi/viewcontent.cgi?article=2149&context=etd.
     !-----------------------------------------------------------------------
 
-    use grid_class, only: &
-        gr    ! Variable type(s)
-
     use constants_clubb, only: &
         zero,                & ! Constant(s)
         eta_tol,             &
@@ -1006,7 +1010,7 @@ module pdf_utilities
     implicit none
 
     ! Input Variables
-    real( kind = core_rknd ), dimension(gr%nz), intent(in) :: &
+    real( kind = core_rknd ), intent(in) :: &
       crt_i,        & ! Coefficient of r_t for chi (old s) (ith PDF comp.)   [-]
       cthl_i,       & ! Coefficient of th_l for chi (ith PDF comp.)  [(kg/kg)/K]
       sigma_rt_i,   & ! Standard deviation of r_t (ith PDF component)    [kg/kg]
@@ -1016,17 +1020,17 @@ module pdf_utilities
       corr_thl_x_i    ! Correlation of th_l and x (ith PDF component)        [-]
 
     ! Return Variable
-    real( kind = core_rknd ), dimension(gr%nz) :: &
+    real( kind = core_rknd ) &
       corr_eta_x_i  ! Correlation of eta and x (ith PDF component)   [-]
 
 
     ! Calculate the correlation of eta and x in the ith PDF component.
-    where ( sigma_eta_i > eta_tol )
+    if ( sigma_eta_i > eta_tol ) then
 
        corr_eta_x_i = crt_i * ( sigma_rt_i / sigma_eta_i ) * corr_rt_x_i  &
                       + cthl_i * ( sigma_thl_i / sigma_eta_i ) * corr_thl_x_i
 
-    elsewhere  ! sigma_eta_i = 0
+    else  ! sigma_eta_i = 0
 
        ! The standard deviation of eta in the ith PDF component is 0.  This
        ! means that eta is constant within the ith PDF component, and the ith
@@ -1035,17 +1039,17 @@ module pdf_utilities
        ! be used.
        corr_eta_x_i = zero
 
-    endwhere
+    endif
 
     ! Clip the magnitude of the correlation of eta and x in the ith PDF
     ! component, just in case the correlations and standard deviations used in
     ! calculating it are inconsistent, resulting in an unrealizable value for
     ! corr_eta_x_i.
-    where ( corr_eta_x_i > max_mag_correlation )
+    if ( corr_eta_x_i > max_mag_correlation ) then
        corr_eta_x_i = max_mag_correlation
-    elsewhere ( corr_eta_x_i < -max_mag_correlation )
+    elseif ( corr_eta_x_i < -max_mag_correlation ) then
        corr_eta_x_i = -max_mag_correlation
-    endwhere
+    endif
 
 
     return
@@ -1053,8 +1057,8 @@ module pdf_utilities
   end function calc_corr_eta_x
 
   !=============================================================================
-  pure function calc_corr_rt_x( crt_i, sigma_rt_i, sigma_chi_i, &
-                                sigma_eta_i, corr_chi_x_i, corr_eta_x_i )  &
+  elemental function calc_corr_rt_x( crt_i, sigma_rt_i, sigma_chi_i, &
+                                     sigma_eta_i, corr_chi_x_i, corr_eta_x_i ) &
   result( corr_rt_x_i )
 
     ! Description:
@@ -1122,8 +1126,9 @@ module pdf_utilities
   end function calc_corr_rt_x
 
   !=============================================================================
-  pure function calc_corr_thl_x( cthl_i, sigma_thl_i, sigma_chi_i, &
-                                 sigma_eta_i, corr_chi_x_i, corr_eta_x_i )  &
+  elemental function calc_corr_thl_x( cthl_i, sigma_thl_i, sigma_chi_i, &
+                                      sigma_eta_i, corr_chi_x_i, &
+                                      corr_eta_x_i ) &
   result( corr_thl_x_i )
 
     ! Description:
@@ -1192,12 +1197,12 @@ module pdf_utilities
   end function calc_corr_thl_x
 
   !=============================================================================
-  pure function calc_xp2( mu_x_1, mu_x_2, &
-                          mu_x_1_n, mu_x_2_n, &
-                          sigma_x_1, sigma_x_2, &
-                          sigma_x_1_n, sigma_x_2_n, &
-                          mixt_frac, x_frac_1, x_frac_2, &
-                          x_mean )  &
+  elemental function calc_xp2( mu_x_1, mu_x_2, &
+                               mu_x_1_n, mu_x_2_n, &
+                               sigma_x_1, sigma_x_2, &
+                               sigma_x_1_n, sigma_x_2_n, &
+                               mixt_frac, x_frac_1, x_frac_2, &
+                               x_mean )  &
   result( xp2 )
 
     ! Description:
