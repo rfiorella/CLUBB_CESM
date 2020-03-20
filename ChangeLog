@@ -1,4 +1,44 @@
 ======================================================================
+Tag: clubb_released_b76a124_20200220_c20200320
+Tag creator: cacraig, Brian Griffin
+Date created: March 20, 2020
+
+Commands issued:
+  git clone https://github.com/larson-group/clubb_release
+  cd clubb_release
+  git checkout b76a124
+  
+CAM's mods applied to checked out code:
+---------------------------------
+
+diff -r /home/cacraig/clubb_release/src/CLUBB_core/error_code.F90 /home/cacraig/cam6_2_017_clubb/src/physics/clubb_old/error_code.F90
+79c79
+<         write(err_header,'(A7,I7,A20)') "Process ", getpid(), " -- CLUBB -- ERROR: "
+---
+>         write(err_header,'(A20)') " -- CLUBB -- ERROR: "
+Only in /home/cacraig/cam6_2_017_clubb/src/physics/clubb_old: .git
+diff -r /home/cacraig/clubb_release/src/CLUBB_core/variables_prognostic_module.F90 /home/cacraig/cam6_2_017_clubb/src/physics/clubb_old/variables_prognostic_module.F90
+178c178
+<   type(pdf_parameter), allocatable, public, save :: &
+---
+>   type(pdf_parameter), public, save :: &
+317,318d316
+<     allocate( pdf_params )
+<     allocate( pdf_params_frz )
+492,495d489
+<
+<       ! Variable for pdf closure scheme
+<       deallocate( pdf_params )
+<       deallocate( pdf_params_frz )
+
+NOTE - the following change was reapplied (no difference from the last CESM tag)
+**** error_code.F90
+79c79
+<         write(err_header,'(A7,I7,A20)') "Process ", getpid(), " -- CLUBB -- ERROR: "
+---
+>         write(err_header,'(A20)') " -- CLUBB -- ERROR: "
+
+======================================================================
 Tag: clubb_ncar_backwards_compat_20181205_c20191001
 Tag creator: cacraig, nusbaume
 Date created: Oct 1, 2019
