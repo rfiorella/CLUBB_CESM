@@ -11,12 +11,6 @@ Commands issued:
 CAM's mods applied to checked out code:
 ---------------------------------
 
-diff -r /home/cacraig/clubb_release/src/CLUBB_core/error_code.F90 /home/cacraig/cam6_2_017_clubb/src/physics/clubb_old/error_code.F90
-79c79
-<         write(err_header,'(A7,I7,A20)') "Process ", getpid(), " -- CLUBB -- ERROR: "
----
->         write(err_header,'(A20)') " -- CLUBB -- ERROR: "
-Only in /home/cacraig/cam6_2_017_clubb/src/physics/clubb_old: .git
 diff -r /home/cacraig/clubb_release/src/CLUBB_core/variables_prognostic_module.F90 /home/cacraig/cam6_2_017_clubb/src/physics/clubb_old/variables_prognostic_module.F90
 178c178
 <   type(pdf_parameter), allocatable, public, save :: &
