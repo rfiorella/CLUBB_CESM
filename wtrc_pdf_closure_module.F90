@@ -1,11 +1,11 @@
 !---------------------------------------------------------------------------
 ! $Id: pdf_closure_module.F90 7309 2014-09-20 17:06:28Z betlej@uwm.edu $
 !===============================================================================
-module pdf_closure_module
+module wtrc_pdf_closure_module
 
   implicit none
 
-  public :: pdf_closure, calc_vert_avg_cf_component
+  public :: wtrc_pdf_closure, calc_vert_avg_cf_component
 
   private ! Set Default Scope
 
@@ -19,11 +19,12 @@ module pdf_closure_module
   ! and GFDL.
   !#######################################################################
   !#######################################################################
-  subroutine pdf_closure( hydromet_dim, p_in_Pa, exner, thv_ds, wm, &
+  subroutine wtrc_pdf_closure( hydromet_dim, p_in_Pa, exner, thv_ds, wm, &
                           wp2, wp3, sigma_sqd_w,                    &
                           Skw, Skthl, Skrt, rtm, rtp2,              &
-                          wprtp, thlm, thlp2,                       &
-                          wpthlp, rtpthlp, sclrm,                   &
+                          wprtp, Skwtrc, wtrc_rtm,                  &
+                          wtrc_rtp2, wtrc_wprtp, thlm, thlp2,       &
+                          wpthlp, rtpthlp, wtrc_rtpthlp, sclrm,     &
                           wpsclrp, sclrp2, sclrprtp,                &
                           sclrpthlp, level,                         &
 #ifdef GFDL
@@ -34,8 +35,9 @@ module pdf_closure_module
                           wp4, wprtp2, wp2rtp,                      &
                           wpthlp2, wp2thlp, wprtpthlp,              &
                           cloud_frac, ice_supersat_frac,            &
-                          rcm, wpthvp, wp2thvp, rtpthvp,            &
-                          thlpthvp, wprcp, wp2rcp, rtprcp,          &
+                          rcm, wtrc_rcm, wpthvp, wp2thvp, rtpthvp,  &
+                          wtrc_rtpthvp, thlpthvp, wprcp,            &
+                          wp2rcp, rtprcp,wtrc_rtprcp,               &
                           thlprcp, rcp2, pdf_params,                &
                           err_code,                                 &
                           wpsclrprtp, wpsclrp2, sclrpthvp,          &
@@ -128,6 +130,22 @@ module pdf_closure_module
         l_use_ADG2, &
         l_use_3D_closure
 
+   !water tracers:
+   !NOTE:  If this doesn't work, need to create edsclr_dim
+   !like quantity specifically for water isotopes. -jN
+    use water_tracer_vars, only: &
+        wtrc_nwset,  &
+        wtrc_iatype, &
+        iwspec,      & 
+        wisotope
+    use water_tracers, only: &
+        wtrc_ratio, &
+        wtrc_get_alpha, &
+        wtrc_liqvap_equil
+    use water_types, only: &
+        iwtvap, &
+        iwtliq
+
     implicit none
 
     intrinsic :: sqrt, exp, min, max, abs, present
@@ -153,6 +171,14 @@ module pdf_closure_module
       thlp2,       & ! th_l'^2                                    [K^2]
       wpthlp,      & ! w'th_l'                                    [K(m/s)]
       rtpthlp        ! r_t'th_l'                                  [K(kg/kg)]
+
+    !water tracers
+    real( kind = core_rknd ), dimension(wtrc_nwset), intent(in) :: &
+      wtrc_rtm,    & ! Mean water tracer total water mix. ratio   [kg/kg]
+      wtrc_rtp2,   & ! wtrc_rt'^2                                 [(kg/kg)^2]
+      wtrc_wprtp,  & ! w'wtrc_rt'                                 [(kg/kg)(m/s)]
+      Skwtrc,      & ! Skewness of wtrc_rt                        [-]
+      wtrc_rtpthlp   ! wtrc_rt'th_l'                              [K(kg/kg)]
 
     real( kind = core_rknd ), dimension(sclr_dim), intent(in) ::  & 
       sclrm,       & ! Mean passive scalar        [units vary]
@@ -205,6 +231,12 @@ module pdf_closure_module
       rcp2,               & ! r_c'^2                [(kg^2)/(kg^2)]
       wprtpthlp             ! w' r_t' th_l'         [(m kg K)/(s kg)]
 
+    !water tracers:
+    real( kind = core_rknd ), intent(out), dimension(wtrc_nwset) :: &
+      wtrc_rcm,           & ! water tracer/isotope cloud water mixing ratio (thermo levels).
+      wtrc_rtprcp,        & ! wtrc_rt' wtrc_rc'
+      wtrc_rtpthvp          ! wtrc_rt' th_v'
+
     type(pdf_parameter), intent(out) :: & 
       pdf_params     ! pdf paramters         [units vary]
 
@@ -228,6 +260,10 @@ module pdf_closure_module
       thl_1_n, thl_2_n,          &
       rt_1_n, rt_2_n
 
+    !water tracers
+    real( kind = core_rknd)  ::  &
+      wtrc_1_n, wtrc_2_n
+
     ! Variables that are stored in derived data type pdf_params.
     real( kind = core_rknd ) ::  &
       w_1,          & ! Mean of w (1st PDF component)                       [m/s]
@@ -249,6 +285,17 @@ module pdf_closure_module
       crt_2,        & ! Coef. on r_t in s/t eqns. (2nd PDF comp.)             [-]
       cthl_1,       & ! Coef. on th_l in s/t eqns. (1st PDF comp.)    [(kg/kg)/K]
       cthl_2          ! Coef. on th_l in s/t eqns. (2nd PDF comp.)    [(kg/kg)/K]
+
+    !watert tracers
+    real( kind = core_rknd ), dimension(wtrc_nwset) :: &
+      wtrc_rt_1,    &
+      wtrc_rt_2,    &
+      wtrc_rc_1,    &
+      wtrc_rc_2,    &
+      varnce_wtrc_1,&
+      varnce_wtrc_2,&
+      alpha_wtrc_rt,&
+      wtrc_rrtthl
 
     real( kind = core_rknd ) :: &
       chi_1,           & ! Mean of chi (old s) (1st PDF component)       [kg/kg]
@@ -276,6 +323,18 @@ module pdf_closure_module
       sigma_sqd_thl_2,     & !
       sigma_sqd_rt_1,      & !
       sigma_sqd_rt_2
+
+    !water tracers
+    real( kind = core_rknd) :: &
+      sigma_sqd_wtrc_1,    &
+      sigma_sqd_wtrc_2,    &
+      vtmp,                &  !H2O tracer vapor (temporary)   [kg/kg]
+      ivtmp,               &  !water tracer vapor (temporary) [kg/kg]
+      ltmp,                &  !H2O tracer liquid (temporary)  [kg/kg]
+      iltmp,               &  !H2O tracer vapor  (temporary)  [kg/kg]
+      alpha,               &  !liquid/vapor fractionation factor [unitless]
+      dliqiso,             &  !change in liquid due to equilibration [kg/kg]
+      R                       !water tracer ratio [unitless]
 
     ! Note:  alpha coefficients = 0.5 * ( 1 - correlations^2 ).
     !        These are used to calculate the scalar widths
@@ -321,6 +380,9 @@ module pdf_closure_module
                                 big_m_thl, small_m_thl, &
                                 big_m_rt, small_m_rt
 
+    !water tracers
+    real( kind = core_rknd ) :: big_m_wtrc, small_m_wtrc    
+
     ! variables for computing ice cloud fraction
     real( kind = core_rknd) :: &
       ice_supersat_frac_1, & ! Ice supersaturation fraction (1st PDF comp.)  [-]
@@ -350,6 +412,9 @@ module pdf_closure_module
       l_liq_ice_loading_test = .false. ! Temp. flag liq./ice water loading test
 
     integer :: i, hm_idx   ! Indices
+
+    !water tracers
+    integer :: m !water tracer index
 
 #ifdef GFDL
     real ( kind = core_rknd ), parameter :: t1_combined = 273.16, &
@@ -390,6 +455,16 @@ module pdf_closure_module
       varnce_thl_1 = 0._core_rknd
       varnce_thl_2 = 0._core_rknd
       rrtthl       = 0._core_rknd
+
+      !water tracers:
+      do m=1,wtrc_nwset
+        wtrc_rt_1(m)     = wtrc_rtm(m)
+        wtrc_rt_2(m)     = wtrc_rtm(m)
+        varnce_wtrc_1(m) = 0._core_rknd
+        varnce_wtrc_2(m) = 0._core_rknd
+        alpha_wtrc_rt(m) = one_half
+        wtrc_rrtthl(m)   = 0._core_rknd
+      end do
 
       if ( l_scalar_calc ) then
         do i = 1, sclr_dim, 1
@@ -488,6 +563,14 @@ module pdf_closure_module
           varnce_rt_1 = 0.0_core_rknd
           varnce_rt_2 = 0.0_core_rknd
           alpha_rt    = one_half
+         !water tracers:
+          do m=1,wtrc_nwset
+            wtrc_rt_1(m)     = wtrc_rtm(m)
+            wtrc_rt_2(m)     = wtrc_rtm(m)
+            varnce_wtrc_1(m) = 0.0_core_rknd
+            varnce_wtrc_2(m) = 0.0_core_rknd
+            alpha_wtrc_rt(m) = one_half
+          end do
         else
 !         rt_1_n = -( wprtp / ( sqrt( wp2 )*sqrt( rtp2 ) ) ) / w_2_n
 !         rt_2_n = -( wprtp / ( sqrt( wp2 )*sqrt( rtp2 ) ) ) / w_1_n
@@ -504,6 +587,21 @@ module pdf_closure_module
           !   to generalize scalar skewnesses.  05 Nov 03
           varnce_rt_1 = ( alpha_rt / mixt_frac * rtp2 ) * width_factor_1
           varnce_rt_2 = ( alpha_rt / (one-mixt_frac) * rtp2 ) * width_factor_2
+
+         !water tracers:
+          do m=1,wtrc_nwset
+            wtrc_rt_1(m) = wtrc_rtm(m) - (wtrc_wprtp(m)/sqrt_wp2)/w_2_n
+            wtrc_rt_2(m) = wtrc_rtm(m) - (wtrc_wprtp(m)/sqrt_wp2)/w_1_n
+!            alpha_wtrc_rt(m) = one_half * ( one - wprtp*wprtp / &
+!               ((one-sigma_sqd_w)*wp2*wtrc_rtp2(m)) )
+            !Use water tracer/ w'q' -JN:
+            alpha_wtrc_rt(m) = one_half * ( one - wtrc_wprtp(m)*wtrc_wprtp(m) / &
+               ((one-sigma_sqd_w)*wp2*wtrc_rtp2(m)) )
+
+            alpha_wtrc_rt(m) = max( min( alpha_wtrc_rt(m), one ), zero_threshold )
+            varnce_wtrc_1(m) = ( alpha_wtrc_rt(m) / mixt_frac * wtrc_rtp2(m) ) * width_factor_1
+            varnce_wtrc_2(m) = ( alpha_wtrc_rt(m) / (one-mixt_frac) * wtrc_rtp2(m) ) * width_factor_2
+          end do
 
         end if ! rtp2 <= rt_tol**2
 
@@ -545,6 +643,27 @@ module pdf_closure_module
                                 varnce_rt_1, varnce_rt_2,       & ! intent(out)
                                 rt_1_n, rt_2_n, rt_1, rt_2 )      ! intent(out)
 
+          !water tracers:
+          !-------------
+           do m=1,wtrc_nwset
+             ! Solve for the rt PDF
+             call backsolve_Luhar_params( Skw, Skwtrc(m),        &   ! intent(in)
+                                          big_m_w, mixt_frac, &      ! intent(in)
+                                          big_m_wtrc, small_m_wtrc ) ! intent(out)
+
+             call close_Luhar_pdf( wtrc_rtm(m), wtrc_rtp2(m),      & ! intent(in)
+                                   mixt_frac, small_m_wtrc,        & ! intent(in)
+                                   Skwtrc(m), Skw,                 & ! intent(in)
+                                   sigma_sqd_wtrc_1,               & ! intent(out)
+                                   sigma_sqd_wtrc_2,               & ! intent(out)
+                                   varnce_wtrc_1(m),               & ! intent(out)
+                                   varnce_wtrc_2(m),               & ! intent(out)
+                                   wtrc_1_n, wtrc_2_n,             & ! intent(out)
+                                   wtrc_rt_1(m), wtrc_rt_2(m) )      ! intent(out)
+
+           end do
+          !-------------
+
         elseif ( ( abs(Skthl) > abs(Skw) ) &
                    .and. ( abs(Skthl) >= abs(Skrt) )  ) then
 
@@ -583,6 +702,27 @@ module pdf_closure_module
                                 varnce_rt_1, varnce_rt_2,       & ! intent(out)
                                 rt_1_n, rt_2_n, rt_1, rt_2 )      ! intent(out)
 
+          !water tracers:
+          !-------------
+           do m=1,wtrc_nwset
+             ! Solve for the rt PDF
+             call backsolve_Luhar_params( Skw, Skwtrc(m),        &   ! intent(in)
+                                          big_m_w, mixt_frac, &      ! intent(in)
+                                          big_m_wtrc, small_m_wtrc ) ! intent(out)
+
+             call close_Luhar_pdf( wtrc_rtm(m), wtrc_rtp2(m),      & ! intent(in)
+                                   mixt_frac, small_m_wtrc,        & ! intent(in)
+                                   Skwtrc(m), Skw,                 & ! intent(in)
+                                   sigma_sqd_wtrc_1,               & ! intent(out)
+                                   sigma_sqd_wtrc_2,               & ! intent(out)
+                                   varnce_wtrc_1(m),               & ! intent(out)
+                                   varnce_wtrc_2(m),               & ! intent(out)
+                                   wtrc_1_n, wtrc_2_n,             & ! intent(out)
+                                   wtrc_rt_1(m), wtrc_rt_2(m) )      ! intent(out)
+
+           end do
+          !-------------
+
         else
 
           ! rt has the greatest magnitude of skewness.
@@ -597,6 +737,27 @@ module pdf_closure_module
                                 sigma_sqd_rt_1, sigma_sqd_rt_2, & ! intent(out)
                                 varnce_rt_1, varnce_rt_2,       & ! intent(out)
                                 rt_1_n, rt_2_n, rt_1, rt_2 )      ! intent(out)
+
+          !water tracers:
+          !-------------
+           do m=1,wtrc_nwset
+             ! Solve for the rt PDF
+             call backsolve_Luhar_params( Skw, Skwtrc(m),        &   ! intent(in)
+                                          big_m_w, mixt_frac, &      ! intent(in)
+                                          big_m_wtrc, small_m_wtrc ) ! intent(out)
+
+             call close_Luhar_pdf( wtrc_rtm(m), wtrc_rtp2(m),      & ! intent(in)
+                                   mixt_frac, small_m_wtrc,        & ! intent(in)
+                                   Skwtrc(m), Skw,                 & ! intent(in)
+                                   sigma_sqd_wtrc_1,               & ! intent(out)
+                                   sigma_sqd_wtrc_2,               & ! intent(out)
+                                   varnce_wtrc_1(m),               & ! intent(out)
+                                   varnce_wtrc_2(m),               & ! intent(out)
+                                   wtrc_1_n, wtrc_2_n,             & ! intent(out)
+                                   wtrc_rt_1(m), wtrc_rt_2(m) )      ! intent(out)
+
+           end do
+          !-------------
 
           ! Solve for the w PDF
           call backsolve_Luhar_params( Skrt, Skw,           & ! intent(in)
@@ -687,6 +848,29 @@ module pdf_closure_module
         rrtthl = 0.0_core_rknd
       end if ! varnce_rt_1*varnce_thl_1 > 0 .and. varnce_rt_2*varnce_thl_2 > 0
 
+      !water tracers:
+      !-------------
+      do m=1,wtrc_nwset
+        if ( varnce_wtrc_1(m)*varnce_thl_1 > 0._core_rknd .and. &
+             varnce_wtrc_2(m)*varnce_thl_2 > 0._core_rknd ) then
+          wtrc_rrtthl(m) = ( wtrc_rtpthlp(m) - mixt_frac * &
+                   ( wtrc_rt_1(m)-wtrc_rtm(m) ) * ( thl_1-thlm ) &
+                   - (one-mixt_frac) * ( wtrc_rt_2(m)-wtrc_rtm(m) ) &
+                   * ( thl_2-thlm ) ) &
+                / ( mixt_frac*sqrt( varnce_wtrc_1(m)*varnce_thl_1 ) &
+                   + (one-mixt_frac)*sqrt( varnce_wtrc_2(m)*varnce_thl_2 ) )
+          if ( wtrc_rrtthl(m) < -one ) then
+            wtrc_rrtthl(m) = -one
+          end if
+          if ( wtrc_rrtthl(m) > one ) then
+            wtrc_rrtthl(m) = one
+          end if
+        else
+          wtrc_rrtthl(m) = 0.0_core_rknd
+        end if ! varnce_rt_1*varnce_thl_1 > 0 .and. varnce_rt_2*varnce_thl_2 > 0
+      end do
+      !--------------
+
       ! Sub-plume correlation, rsclrthl, of passive scalar and theta_l.
       if ( l_scalar_calc ) then
         do i=1, sclr_dim
@@ -759,8 +943,17 @@ module pdf_closure_module
                 + rrtthl*sqrt( varnce_rt_1*varnce_thl_1 ) ) & 
                 + ( one-mixt_frac ) * ( w_2-wm )*( (rt_2-rtm)*(thl_2-thlm) & 
                 + rrtthl*sqrt( varnce_rt_2*varnce_thl_2 ) )
+      !water tracers:
+      !-------------
+     ! do m=1,wtrc_nwset
+     !   wtrc_wprtpthlp(m) = mixt_frac * ( w_1-wm ) &
+     !           *( (wtrc_rt_1(m)-wtrc_rtm(m))*(thl_1-thlm)  &
+     !           + wtrc_rrtthl(m)*sqrt( varnce_rt_1(m)*varnce_thl_1 ) ) &
+     !           + ( one-mixt_frac ) * ( w_2-wm )*( (wtrc_rt_2(m)-wtrc_rtm(m))*(thl_2-thlm) &
+     !           + wtrc_rrtthl(m)*sqrt( varnce_rt_2(m)*varnce_thl_2 ) )
+     ! end do
+      !-------------
     end if
-
 
     ! Scalar Addition to higher order moments
     if ( l_scalar_calc ) then
@@ -936,6 +1129,64 @@ module pdf_closure_module
     ! Calculate cloud_frac_2 and rc_2
     call calc_cloud_frac_component(chi_2, stdev_chi_2, chi_at_liq_sat, cloud_frac_2, rc_2)
 
+    ! Calculate water tracer/isotopic cloud condensates for each pdf:
+    !-----------------
+    !NOTE:  Occasionally, CLUBB produces negative total water mass.
+    !This is unphysical, and can result in wildely unrealistic
+    !water isotope values.  To remedy this, if the total water mass
+    !is below a certain threshold (or negative), use the original mean
+    !grid box value -JN
+    do m=1,wtrc_nwset
+      !First PDF:
+      if(wtrc_rt_1(1) .gt. 1e-18) then !positive mass?
+        R = wtrc_ratio(iwspec(wtrc_iatype(m,iwtvap)),wtrc_rt_1(m),wtrc_rt_1(1))
+      else !If not, use grid mean values
+        R = wtrc_ratio(iwspec(wtrc_iatype(m,iwtvap)),wtrc_rtm(m),wtrc_rtm(1))
+      end if
+      wtrc_rc_1(m) = R*rc_1
+      !Second PDF:
+      if(wtrc_rt_2(1) .gt. 1e-18) then !positive mass?
+        R = wtrc_ratio(iwspec(wtrc_iatype(m,iwtvap)),wtrc_rt_2(m),wtrc_rt_2(1))
+      else !If not, use grid mean values
+        R = wtrc_ratio(iwspec(wtrc_iatype(m,iwtvap)),wtrc_rtm(m),wtrc_rtm(1))
+      end if
+      wtrc_rc_2(m) = R*rc_2
+    end do
+    !equilibrate water isotopic cloud liquid and vapor:
+    if(.false.) then
+    !if(wisotope) then
+      do m=2,wtrc_nwset !Don't equilibrate H2O tracer
+        !First PDF:
+        ivtmp = wtrc_rt_1(m)-wtrc_rc_1(m) !temporary variables
+        vtmp  = wtrc_rt_1(1)-wtrc_rc_1(1)
+        iltmp = wtrc_rc_1(m)
+        ltmp  = wtrc_rc_1(1)
+
+        alpha = wtrc_get_alpha(vtmp,tl1,iwspec(wtrc_iatype(m,iwtvap)),&
+                               iwtvap,iwtliq,.false.,1._core_rknd,.false.)
+
+        call wtrc_liqvap_equil(alpha, 1._core_rknd, vtmp, ltmp,&
+                               ivtmp, iltmp, dliqiso) !equilibrate
+
+        wtrc_rc_1(m) = wtrc_rc_1(m)+dliqiso !apply change to cloud liquid
+
+        !Second PDF:
+        ivtmp = wtrc_rt_2(m)-wtrc_rc_2(m) !temporary variables
+        vtmp  = wtrc_rt_2(1)-wtrc_rc_2(1)
+        iltmp = wtrc_rc_2(m)
+        ltmp  = wtrc_rc_2(1)
+
+        alpha = wtrc_get_alpha(vtmp,tl2,iwspec(wtrc_iatype(m,iwtvap)),&
+                               iwtvap,iwtliq,.false.,1._core_rknd,.false.)
+
+        call wtrc_liqvap_equil(alpha, 1._core_rknd, vtmp, ltmp,&
+                               ivtmp, iltmp, dliqiso) !equilibrate
+
+        wtrc_rc_2(m) = wtrc_rc_2(m)+dliqiso !apply change to cloud liquid
+      end do
+    end if
+    !------------------
+
     if ( l_calc_ice_supersat_frac ) then
       ! We must compute chi_at_ice_sat1 and chi_at_ice_sat2
       if (tl1 <= T_freeze_K) then
@@ -1022,6 +1273,19 @@ module pdf_closure_module
 
     rtpthvp  = rtpthlp + ep1*thv_ds*rtp2 + rc_coef*rtprcp - thv_ds * rtprxp
 
+    !water tracers:
+    do m=1,wtrc_nwset
+      wtrc_rtprcp(m) = mixt_frac * ( (wtrc_rt_1(m)-wtrc_rtm(m))*wtrc_rc_1(m) &
+           + (crt_1*varnce_wtrc_1(m))*cloud_frac_1 ) &
+           + (one-mixt_frac) * ( (wtrc_rt_2(m)-wtrc_rtm(m))*wtrc_rc_2(m) &
+           + (crt_2*varnce_wtrc_2(m))*cloud_frac_2 ) &
+           - mixt_frac*wtrc_rrtthl(m)*cthl_1*sqrt( varnce_wtrc_1(m)*varnce_thl_1 )*cloud_frac_1 &
+           - (one-mixt_frac)*wtrc_rrtthl(m)*cthl_2*sqrt( varnce_wtrc_2(m)*varnce_thl_2 )*cloud_frac_2
+
+      wtrc_rtpthvp(m) = wtrc_rtpthlp(m) + ep1*thv_ds*wtrc_rtp2(m) + &
+                        rc_coef*wtrc_rtprcp(m) - thv_ds * rtprxp
+    end do 
+
     ! Account for subplume correlation of scalar, theta_v.
     ! See Eqs. A13, A8 from Larson et al. (2002) ``Small-scale...''
     !  where the ``scalar'' in this paper is w.
@@ -1048,7 +1312,24 @@ module pdf_closure_module
     rcm        = mixt_frac * rc_1         + (one-mixt_frac) * rc_2
     
     rcm = max( zero_threshold, rcm )
-    
+
+    do m=1,wtrc_nwset
+      wtrc_rcm(m) = mixt_frac * wtrc_rc_1(m) + (one-mixt_frac) * wtrc_rc_2(m)
+      wtrc_rcm(m) = max( zero_threshold, wtrc_rcm(m))
+    end do
+
+   !debugging -JN:
+   !-------------
+    if(wtrc_rcm(3) .gt. 10.0) then
+      write(*,*) 'HDO liquid-error intra-pdf post-mixt',wtrc_rcm(3),&
+                    wtrc_rcm(1),wtrc_rc_1(3),wtrc_rc_1(1),wtrc_rc_2(3),&
+                    wtrc_rc_2(1),mixt_frac,zero_threshold
+      !Eliminate error:
+      wtrc_rcm(3) = rcm
+    end if
+    !-------------
+
+
     if (l_calc_ice_supersat_frac) then
       ! Compute ice cloud fraction, ice_supersat_frac
       ice_supersat_frac = calc_cloud_frac( ice_supersat_frac_1, &
@@ -1357,7 +1638,7 @@ module pdf_closure_module
     end if ! clubb_at_least_debug_level
 
     return
-  end subroutine pdf_closure
+  end subroutine wtrc_pdf_closure
   
   !=============================================================================
   elemental subroutine calc_cloud_frac_component( mean_chi_i, stdev_chi_i, &
@@ -2498,4 +2779,4 @@ module pdf_closure_module
 
 !===============================================================================
 
-end module pdf_closure_module
+end module wtrc_pdf_closure_module
